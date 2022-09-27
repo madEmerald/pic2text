@@ -1,7 +1,35 @@
 import numpy as np
 
-class Tensor(object):
 
+class Softmax:
+    def forward(self, x):
+        x = x - np.max(x)
+        self.p = np.exp(x) / np.sum(np.exp(x))
+        return self.p
+
+    def backward(self, dz):
+        jacobian_mtrx = np.diag(dz)
+        for i in range(len(jacobian_mtrx)):
+            for j in range(len(jacobian_mtrx)):
+
+                if i == j:
+                    jacobian_mtrx[i][j] = self.p[i] * (1 - self.p[j])
+                else:
+                    jacobian_mtrx[i][j] = -self.p[i] * self.p[j]
+        return np.matmul(dz, jacobian_mtrx)
+
+
+class ReLU:
+    def forward(self, x):
+        self.x = x
+        return np.maximum(0, x)
+
+    def backward(self, dz):
+        dz[self.x < 0] = 0
+        return dz
+
+
+class Tensor(object):
     def __init__(self, data,
                  multiple_auto_gradient=False,
                  creating_objects=None,
