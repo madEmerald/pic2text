@@ -220,6 +220,21 @@ class Tensor(object):
         return str(self.data.__str__())
 
 
+class Dropout:
+    def __init__(self, p=0.5):
+        self.p = p
+
+    def forward(self, x, train=True):
+        if not train:
+            self.mask = np.ones(*x.shape)
+            return x
+        self.mask = (np.random.rand(*x.shape) > self.p) / (1.0 - self.p)
+        return x * self.mask
+
+    def backward(self, dz, lr=0.001):
+        return dz * self.mask
+
+
 class SGD(object):
     def __init__(self, parameters, alpha=0.1):
         self.parameters = parameters
