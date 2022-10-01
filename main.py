@@ -124,6 +124,9 @@ class Tensor(object):
                 if self.creating_operations == "tanh":
                     ones = Tensor(np.ones_like(self.gradient.data))
                     self.creating_object[0].back_propagation(self.gradient * (ones - (self * self)))
+                    
+                if self.creating_operations == "linear":
+                    return    
 
     def __add__(self, other):
         if self.multiple_auto_gradient and other.multiple_auto_gradient:
@@ -212,6 +215,15 @@ class Tensor(object):
                           creating_operations="tanh")
 
         return Tensor(np.tanh(self.data))
+    
+    def linear(self):
+        if self.multiple_auto_gradient:
+            return Tensor(self.data,
+                          multiple_auto_gradient=True,
+                          creating_objects=[self],
+                          creating_operations="linear")
+
+        return Tensor(self.data)    
 
     def __repr__(self):
         return str(self.data.__repr__())
@@ -309,6 +321,15 @@ class Sigmoid(Layer):
     @staticmethod
     def forward(input):
         return input.sigmoid()
+    
+    
+ class Linear(Layer):
+    def __init__(self):
+        super().__init__()
+
+    @staticmethod
+    def forward(input):
+        return input.linear()   
 
 
 class MSELoss(Layer):
@@ -318,6 +339,18 @@ class MSELoss(Layer):
     @staticmethod
     def forward(predict, goal):
         return ((predict - goal) * (predict - goal)).sum(0)
+    
+    
+class CrossEntropyLoss(Layer):
+    def __init__(self):
+        super().__init__()
+
+    @staticmethod
+    def forward(predict, goal):
+        if goal == 1:
+            return -np.log(predict)
+        else:
+            return -np.log(1 - predict)    
 
 
 np.random.seed(0)
