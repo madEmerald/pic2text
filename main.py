@@ -124,9 +124,9 @@ class Tensor(object):
                 if self.creating_operations == "tanh":
                     ones = Tensor(np.ones_like(self.gradient.data))
                     self.creating_object[0].back_propagation(self.gradient * (ones - (self * self)))
-                    
+
                 if self.creating_operations == "linear":
-                    return    
+                    return
 
     def __add__(self, other):
         if self.multiple_auto_gradient and other.multiple_auto_gradient:
@@ -215,7 +215,7 @@ class Tensor(object):
                           creating_operations="tanh")
 
         return Tensor(np.tanh(self.data))
-    
+
     def linear(self):
         if self.multiple_auto_gradient:
             return Tensor(self.data,
@@ -223,7 +223,7 @@ class Tensor(object):
                           creating_objects=[self],
                           creating_operations="linear")
 
-        return Tensor(self.data)    
+        return Tensor(self.data)
 
     def __repr__(self):
         return str(self.data.__repr__())
@@ -321,15 +321,15 @@ class Sigmoid(Layer):
     @staticmethod
     def forward(input):
         return input.sigmoid()
-    
-    
- class Linear(Layer):
+
+
+class Linear(Layer):
     def __init__(self):
         super().__init__()
 
     @staticmethod
     def forward(input):
-        return input.linear()   
+        return input.linear()
 
 
 class MSELoss(Layer):
@@ -339,8 +339,8 @@ class MSELoss(Layer):
     @staticmethod
     def forward(predict, goal):
         return ((predict - goal) * (predict - goal)).sum(0)
-    
-    
+
+
 class CrossEntropyLoss(Layer):
     def __init__(self):
         super().__init__()
@@ -350,7 +350,25 @@ class CrossEntropyLoss(Layer):
         if goal == 1:
             return -np.log(predict)
         else:
-            return -np.log(1 - predict)    
+            return -np.log(1 - predict)
+
+
+class Network:
+    def __init__(self, data, target, model, alpha, loss_function=MSELoss):
+        self.data = data
+        self.target = target
+        self.model = model
+        self.loss_function = loss_function
+
+        self.optim = SGD(parameters=model.get_parameters(), alpha=alpha)
+
+    def learning(self, num_epochs):
+        for _ in range(num_epochs):
+            pred = model.forward(self.data)
+            loss = self.loss_function().forward(pred, target)
+            loss.back_propagation(Tensor(np.ones_like(loss.data)))
+            self.optim.step()
+            print(loss)
 
 
 np.random.seed(0)
@@ -362,11 +380,5 @@ model = Sequential([Dense(2, 3),
                     Dense(3, 1),
                     Sigmoid()])
 
-optim = SGD(parameters=model.get_parameters(), alpha=1)
-
-for i in range(10):
-    pred = model.forward(data)
-    loss = MSELoss().forward(pred, target)
-    loss.back_propagation(Tensor(np.ones_like(loss.data)))
-    optim.step()
-    print(loss)
+net = Network(data, target, model, 1)
+net.learning(10)
