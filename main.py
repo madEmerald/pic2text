@@ -355,6 +355,14 @@ class CrossEntropyLoss(Layer):
 
 class Network:
     def __init__(self, data, target, model, alpha, loss_function=MSELoss):
+        if not isinstance(data, Tensor):
+            data = Tensor(data)
+        data.multiple_auto_gradient = True
+
+        if not isinstance(target, Tensor):
+            target = Tensor(target)
+        target.multiple_auto_gradient = True
+
         self.data = data
         self.target = target
         self.model = model
@@ -364,21 +372,26 @@ class Network:
 
     def learning(self, num_epochs):
         for _ in range(num_epochs):
-            pred = model.forward(self.data)
-            loss = self.loss_function().forward(pred, target)
+            pred = self.model.forward(self.data)
+            loss = self.loss_function().forward(pred, self.target)
             loss.back_propagation(Tensor(np.ones_like(loss.data)))
             self.optim.step()
             print(loss)
 
 
-np.random.seed(0)
+def main():
+    np.random.seed(0)
 
-data = Tensor(np.array([[0, 0], [0, 1], [1, 0], [1, 1]]), multiple_auto_gradient=True)
-target = Tensor(np.array([[0], [1], [0], [1]]), multiple_auto_gradient=True)
-model = Sequential([Dense(2, 3),
-                    Tanh(),
-                    Dense(3, 1),
-                    Sigmoid()])
+    data = Tensor(np.array([[0, 0], [0, 1], [1, 0], [1, 1]]), multiple_auto_gradient=True)
+    target = Tensor(np.array([[0], [1], [0], [1]]), multiple_auto_gradient=True)
+    model = Sequential([Dense(2, 3),
+                        Tanh(),
+                        Dense(3, 1),
+                        Sigmoid()])
 
-net = Network(data, target, model, 1)
-net.learning(10)
+    net = Network(data, target, model, 1)
+    net.learning(10)
+
+
+if __name__ == "__main__":
+    main()
