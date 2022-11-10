@@ -376,7 +376,7 @@ class Network:
             loss = self.loss_function().forward(pred, self.target)
             loss.back_propagation(Tensor(np.ones_like(loss.data)))
             self.optim.step()
-            print(loss)
+            print(sum(loss.data))
 
 
 def main():
