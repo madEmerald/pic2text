@@ -53,6 +53,12 @@ class Tensor(object):
                 else:
                     child.children[self.ID] += 1
 
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, item):
+        return self.data[item]
+
     def all_children_gradient_accounted_for(self):
         for ID, count in self.children.items():
             if count != 0:
