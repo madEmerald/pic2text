@@ -360,7 +360,8 @@ class CrossEntropyLoss(Layer):
 
 
 class Network:
-    def __init__(self, data, target, model, alpha, loss_function=MSELoss):
+    def __init__(self, data, target, model, alpha,
+                 loss_function=MSELoss, test_data=None, test_target=None):
         if not isinstance(data, Tensor):
             data = Tensor(data)
         data.multiple_auto_gradient = True
@@ -369,20 +370,54 @@ class Network:
             target = Tensor(target)
         target.multiple_auto_gradient = True
 
+        if test_data is not None:
+            if not isinstance(test_data, Tensor):
+                test_data = Tensor(test_data)
+            test_data.multiple_auto_gradient = True
+
+        if test_target is not None:
+            if not isinstance(test_target, Tensor):
+                test_target = Tensor(test_target)
+            test_target.multiple_auto_gradient = True
+
         self.data = data
         self.target = target
+
+        self.test_data = test_data
+        self.test_target = test_target
+
         self.model = model
         self.loss_function = loss_function
 
         self.optim = SGD(parameters=model.get_parameters(), alpha=alpha)
 
-    def learning(self, num_epochs):
-        for _ in range(num_epochs):
+    def learning(self, num_epochs, test_frequency=0):
+        for i in range(1, num_epochs + 1):
             pred = self.model.forward(self.data)
+
             loss = self.loss_function().forward(pred, self.target)
             loss.back_propagation(Tensor(np.ones_like(loss.data)))
             self.optim.step()
-            print(sum(loss.data))
+
+            print("Iteration:", i, "\tTrain error:", sum(loss.data) / len(self.data), end='\t')
+
+            if test_frequency and i % test_frequency == 0:
+                self.testing(self.test_data, self.test_target)
+
+            print()
+
+    def testing(self, data, target):
+        if data is None or target is None:
+            return
+
+        pred = self.model.forward(data)
+        n_correct = 0
+
+        for i in range(len(pred)):
+            if np.argmax(pred[i]) == np.argmax(target[i]):
+                n_correct += 1
+
+        print("Test accuracy:", n_correct / len(data), end='')
 
 
 def main():
