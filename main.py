@@ -1,34 +1,6 @@
 import numpy as np
 
 
-class Softmax:
-    def forward(self, x):
-        x = x - np.max(x)
-        self.p = np.exp(x) / np.sum(np.exp(x))
-        return self.p
-
-    def backward(self, dz):
-        jacobian_mtrx = np.diag(dz)
-        for i in range(len(jacobian_mtrx)):
-            for j in range(len(jacobian_mtrx)):
-
-                if i == j:
-                    jacobian_mtrx[i][j] = self.p[i] * (1 - self.p[j])
-                else:
-                    jacobian_mtrx[i][j] = -self.p[i] * self.p[j]
-        return np.matmul(dz, jacobian_mtrx)
-
-
-class ReLU:
-    def forward(self, x):
-        self.x = x
-        return np.maximum(0, x)
-
-    def backward(self, dz):
-        dz[self.x < 0] = 0
-        return dz
-
-
 class Tensor(object):
     def __init__(self, data,
                  multiple_auto_gradient=False,
@@ -45,6 +17,9 @@ class Tensor(object):
         if ID is None:
             ID = np.random.randint(0, 1000000000)
         self.ID = ID
+
+        self.softmax_output = None
+        self.target_dist = None
 
         if creating_objects is not None:
             for child in creating_objects:
@@ -131,56 +106,68 @@ class Tensor(object):
                     ones = Tensor(np.ones_like(self.gradient.data))
                     self.creating_object[0].back_propagation(self.gradient * (ones - (self * self)))
 
+                if self.creating_operations == "relu":
+                    self.creating_object[0].back_propagation(self.gradient * np.maximum(self, 0))
+
+                if self.creating_operations == "cross_entropy":
+                    self.creating_object[0].back_propagation(Tensor(self.softmax_output - self.target_dist))
+
                 if self.creating_operations == "linear":
                     return
 
     def __add__(self, other):
+        data = self.data + other.data
         if self.multiple_auto_gradient and other.multiple_auto_gradient:
-            return Tensor(self.data + other.data,
+            return Tensor(data,
                           multiple_auto_gradient=True,
                           creating_objects=[self, other],
                           creating_operations="add")
-        return Tensor(self.data + other.data)
+        return Tensor(data)
 
     def __neg__(self):
+        data = self.data * -1
         if self.multiple_auto_gradient:
-            return Tensor(self.data * -1,
+            return Tensor(data,
                           multiple_auto_gradient=True,
                           creating_objects=[self],
                           creating_operations="neg")
-        return Tensor(self.data * -1)
+        return Tensor(data)
 
     def __sub__(self, other):
+        data = self.data - other.data
         if self.multiple_auto_gradient and other.multiple_auto_gradient:
-            return Tensor(self.data - other.data,
+            return Tensor(data,
                           multiple_auto_gradient=True,
                           creating_objects=[self, other],
                           creating_operations="sub")
-        return Tensor(self.data - other.data)
+        return Tensor(data)
 
     def __mul__(self, other):
+        data = self.data * other.data
         if self.multiple_auto_gradient and other.multiple_auto_gradient:
-            return Tensor(self.data * other.data,
+            return Tensor(data,
                           multiple_auto_gradient=True,
                           creating_objects=[self, other],
                           creating_operations="mul")
-        return Tensor(self.data * other.data)
+        return Tensor(data)
 
     def transpose(self):
+        data = self.data.transpose()
         if self.multiple_auto_gradient:
-            return Tensor(self.data.transpose(),
+            return Tensor(data,
                           multiple_auto_gradient=True,
                           creating_objects=[self],
                           creating_operations="transpose")
-        return Tensor(self.data.transpose())
+        return Tensor(data)
 
     def sum(self, dimension):
+        data = self.data.sum(dimension)
         if self.multiple_auto_gradient:
-            return Tensor(self.data.sum(dimension),
+            return Tensor(data,
                           multiple_auto_gradient=True,
                           creating_objects=[self],
                           creating_operations="sum_" + str(dimension))
-        return Tensor(self.data.sum(dimension))
+        return Tensor(data)
 
     def expand(self, dimension, copies):
         trans_cmd = list(range(0, len(self.data.shape)))
@@ -197,39 +184,13 @@ class Tensor(object):
         return Tensor(new_data)
 
     def scalar_product(self, other):
+        data = self.data.dot(other.data)
         if self.multiple_auto_gradient:
-            return Tensor(self.data.dot(other.data),
+            return Tensor(data,
                           multiple_auto_gradient=True,
                           creating_objects=[self, other],
                           creating_operations="scalar_product")
-        return Tensor(self.data.dot(other.data))
-
-    def sigmoid(self):
-        if self.multiple_auto_gradient:
-            return Tensor(1 / (1 + np.exp(-self.data)),
-                          multiple_auto_gradient=True,
-                          creating_objects=[self],
-                          creating_operations="sigmoid")
-
-        return Tensor(1 / (1 + np.exp(-self.data)))
-
-    def tanh(self):
-        if self.multiple_auto_gradient:
-            return Tensor(np.tanh(self.data),
-                          multiple_auto_gradient=True,
-                          creating_objects=[self],
-                          creating_operations="tanh")
-
-        return Tensor(np.tanh(self.data))
-
-    def linear(self):
-        if self.multiple_auto_gradient:
-            return Tensor(self.data,
-                          multiple_auto_gradient=True,
-                          creating_objects=[self],
-                          creating_operations="linear")
-
-        return Tensor(self.data)
+        return Tensor(data)
 
     def __repr__(self):
         return str(self.data.__repr__())
@@ -287,8 +248,8 @@ class Dense(Layer):
         self.parameters.append(self.weight)
         self.parameters.append(self.bias)
 
-    def forward(self, input):
-        return input.scalar_product(self.weight) + self.bias.expand(0, len(input.data))
+    def forward(self, input_layer):
+        return input_layer.scalar_product(self.weight) + self.bias.expand(0, len(input_layer.data))
 
 
 class Sequential(Layer):
@@ -299,10 +260,10 @@ class Sequential(Layer):
             layers = list()
         self.layers = layers
 
-    def forward(self, input):
+    def forward(self, input_layer):
         for layer in self.layers:
-            input = layer.forward(input)
-        return input
+            input_layer = layer.forward(input_layer)
+        return input_layer
 
     def get_parameters(self):
         params = list()
@@ -316,8 +277,15 @@ class Tanh(Layer):
         super().__init__()
 
     @staticmethod
-    def forward(input):
-        return input.tanh()
+    def forward(input_layer):
+        data = np.tanh(input_layer.data)
+        if input_layer.multiple_auto_gradient:
+            return Tensor(data,
+                          multiple_auto_gradient=True,
+                          creating_objects=[input_layer],
+                          creating_operations="tanh")
+
+        return Tensor(data)
 
 
 class Sigmoid(Layer):
@@ -325,8 +293,32 @@ class Sigmoid(Layer):
         super().__init__()
 
     @staticmethod
-    def forward(input):
-        return input.sigmoid()
+    def forward(input_layer):
+        data = 1 / (1 + np.exp(-input_layer.data))
+        if input_layer.multiple_auto_gradient:
+            return Tensor(data,
+                          multiple_auto_gradient=True,
+                          creating_objects=[input_layer],
+                          creating_operations="sigmoid")
+
+        return Tensor(data)
+
+
+class ReLU(Layer):
+    def __init__(self):
+        super().__init__()
+        self.x = None
+
+    @staticmethod
+    def forward(input_layer):
+        data = np.maximum(input_layer.data, 0)
+        if input_layer.multiple_auto_gradient:
+            return Tensor(data,
+                          multiple_auto_gradient=True,
+                          creating_objects=[input_layer],
+                          creating_operations="relu")
+
+        return Tensor(data)
 
 
 class Linear(Layer):
@@ -334,8 +326,14 @@ class Linear(Layer):
         super().__init__()
 
     @staticmethod
-    def forward(input):
-        return input.linear()
+    def forward(input_layer):
+        if input_layer.multiple_auto_gradient:
+            return Tensor(input_layer.data,
+                          multiple_auto_gradient=True,
+                          creating_objects=[input_layer],
+                          creating_operations="linear")
+
+        return Tensor(input_layer.data)
 
 
 class MSELoss(Layer):
@@ -343,8 +341,8 @@ class MSELoss(Layer):
         super().__init__()
 
     @staticmethod
-    def forward(predict, goal):
-        return ((predict - goal) * (predict - goal)).sum(0)
+    def forward(predict, target):
+        return ((predict - target) * (predict - target)).sum(0)
 
 
 class CrossEntropyLoss(Layer):
@@ -352,16 +350,26 @@ class CrossEntropyLoss(Layer):
         super().__init__()
 
     @staticmethod
-    def forward(predict, goal):
-        if goal == 1:
-            return -np.log(predict)
-        else:
-            return -np.log(1 - predict)
+    def forward(predict, target):
+        exp = np.exp(predict.data)
+        softmax_output = exp / np.sum(exp)
+
+        loss = -(np.log(softmax_output) * target).sum(1)
+        if predict.multiple_auto_gradient:
+            out = Tensor(loss,
+                         multiple_auto_gradient=True,
+                         creating_objects=[predict],
+                         creating_operations="cross_entropy")
+            out.softmax_output = softmax_output
+            out.target_dist = target
+            return out
+
+        return Tensor(loss)
 
 
 class Network:
     def __init__(self, data, target, model, alpha,
-                 loss_function=MSELoss, test_data=None, test_target=None):
+                 loss_function=None, test_data=None, test_target=None):
         if not isinstance(data, Tensor):
             data = Tensor(data)
         data.multiple_auto_gradient = True
@@ -387,19 +395,19 @@ class Network:
         self.test_target = test_target
 
         self.model = model
-        self.loss_function = loss_function
+        self.loss_function = loss_function if loss_function is not None else MSELoss
 
         self.optim = SGD(parameters=model.get_parameters(), alpha=alpha)
 
     def learning(self, num_epochs, test_frequency=0):
         for i in range(1, num_epochs + 1):
-            pred = self.model.forward(self.data)
+            predict = self.model.forward(self.data)
 
-            loss = self.loss_function().forward(pred, self.target)
+            loss = self.loss_function().forward(predict, self.target)
             loss.back_propagation(Tensor(np.ones_like(loss.data)))
             self.optim.step()
 
-            print("Iteration:", i, "\tTrain error:", sum(loss.data) / len(self.data), end='\t')
+            print("Iteration:", i, "\tTrain error:", loss.data.mean() / len(self.data), end='\t')
 
             if test_frequency and i % test_frequency == 0:
                 self.testing(self.test_data, self.test_target)
@@ -424,13 +432,12 @@ def main():
     np.random.seed(0)
 
     data = Tensor(np.array([[0, 0], [0, 1], [1, 0], [1, 1]]), multiple_auto_gradient=True)
-    target = Tensor(np.array([[0], [1], [0], [1]]), multiple_auto_gradient=True)
+    target = Tensor(np.array([[1, 0], [0, 1], [1, 0], [0, 1]]), multiple_auto_gradient=True)
     model = Sequential([Dense(2, 3),
                         Tanh(),
-                        Dense(3, 1),
-                        Sigmoid()])
+                        Dense(3, 1)])
 
-    net = Network(data, target, model, 1)
+    net = Network(data, target, model, 1, loss_function=CrossEntropyLoss)
     net.learning(10)
 
 
