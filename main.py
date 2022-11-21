@@ -20,6 +20,7 @@ class Tensor(object):
 
         self.softmax_output = None
         self.target_dist = None
+        self.dropout_mask = None
 
         if creating_objects is not None:
             for child in creating_objects:
@@ -97,6 +98,9 @@ class Tensor(object):
                 if "expand" in self.creating_operations:
                     dimension = int(self.creating_operations.split("_")[1])
                     self.creating_object[0].back_propagation(self.gradient.sum(dimension))
+
+                if self.creating_operations == "dropout":
+                    self.creating_object[0].back_propagation(self.gradient * self.dropout_mask)
 
                 if self.creating_operations == "sigmoid":
                     ones = Tensor(np.ones_like(self.gradient.data))
@@ -199,21 +203,6 @@ class Tensor(object):
         return str(self.data.__str__())
 
 
-class Dropout:
-    def __init__(self, p=0.5):
-        self.p = p
-
-    def forward(self, x, train=True):
-        if not train:
-            self.mask = np.ones(*x.shape)
-            return x
-        self.mask = (np.random.rand(*x.shape) > self.p) / (1.0 - self.p)
-        return x * self.mask
-
-    def backward(self, dz, lr=0.001):
-        return dz * self.mask
-
-
 class SGD(object):
     def __init__(self, parameters, alpha=0.1):
         self.parameters = parameters
@@ -270,6 +259,24 @@ class Sequential(Layer):
         for k in self.layers:
             params += k.get_parameters()
         return params
+
+
+class Dropout(Layer):
+    def __init__(self, p=0.5):
+        super().__init__()
+        self.p = p
+
+    def forward(self, input_layer):
+        mask = (np.random.rand(*input_layer.data.shape) > self.p) / (1.0 - self.p)
+        data = input_layer.data * mask
+        if input_layer.multiple_auto_gradient:
+            out = Tensor(data,
+                         multiple_auto_gradient=True,
+                         creating_objects=[input_layer],
+                         creating_operations="dropout")
+            out.dropout_mask = mask
+            return out
+        return Tensor(data)
 
 
 class Tanh(Layer):
